@@ -1,0 +1,137 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- 1. PRODUCT INVENTORY (The "Men/Women" & "Essentials" Items) ---
+model Product {
+  id        Int     @id @default(autoincrement())
+  item_code String  @unique
+  name      String
+  price     Decimal
+
+  // Categorization Tags
+  cat_men       Boolean @default(false)
+  cat_women     Boolean @default(false)
+  cat_essential Boolean @default(false)
+
+  sizes     String[] // Postgres text[]
+  image_url String?
+
+  // Relations
+  purchases     PurchaseItem[]
+  wishLists     WishList[]
+  shoppingLists ShoppingList[]
+}
+
+// --- 2. CUSTOMER CRM (Tracks Loyalty & Unlocks) ---
+model Customer {
+  id           Int     @id @default(autoincrement())
+  phone_number String  @unique
+  name         String?
+
+  // Loyalty Logic / relations
+  receipts      Receipt[]
+  reviews       Review[]
+  queries       Query[]
+  sessions      Session[]
+  wishLists     WishList[]
+  shoppingLists ShoppingList[]
+}
+
+// --- 3. LOGISTICS & SALES (The "Unlock" Trigger) ---
+model Receipt {
+  id             Int      @id @default(autoincrement())
+  receipt_number String   @unique
+  created_at     DateTime @default(now())
+
+  // Customer Link (references Customer.phone_number)
+  customer       Customer @relation(fields: [customer_phone], references: [phone_number])
+  customer_phone String
+
+  // Delivery Details
+  delivery_location String?
+  delivery_date     DateTime?
+  is_shipped        Boolean   @default(false)
+  is_confirmed      Boolean   @default(false)
+
+  // Purchased Items
+  items   PurchaseItem[]
+  reviews Review[]
+}
+
+// --- Helper table linking Products to receipts ---
+model PurchaseItem {
+  id Int @id @default(autoincrement())
+
+  // Receipt relation
+  receipt_id Int
+  receipt    Receipt @relation(fields: [receipt_id], references: [id])
+
+  // Product relation
+  product_id Int
+  product    Product @relation(fields: [product_id], references: [id])
+
+  // Additional info (optional)
+  quantity Int      @default(1)
+  price    Decimal?
+}
+
+// --- 4. ANALYTICS (The Session Timer) ---
+model Session {
+  id         Int    @id @default(autoincrement())
+  session_id String @unique
+
+  // Timing
+  time_begin       DateTime  @default(now())
+  time_end         DateTime?
+  duration_seconds Int?
+
+  // User Link (optional)
+  customer       Customer? @relation(fields: [customer_phone], references: [phone_number])
+  customer_phone String?
+}
+
+// --- 5. FEEDBACK (Review & Queries) ---
+model Review {
+  id             Int      @id @default(autoincrement())
+  customer       Customer @relation(fields: [customer_phone], references: [phone_number])
+  customer_phone String
+  content        String
+  rating         Int
+  receipt        Receipt? @relation(fields: [receipt_id], references: [id])
+  receipt_id     Int?
+}
+
+model Query {
+  id             Int      @id @default(autoincrement())
+  customer       Customer @relation(fields: [customer_phone], references: [phone_number])
+  customer_phone String
+  content        String
+  response       String?
+}
+
+// --- 6. WISHLIST & SHOPPING LIST ---
+model WishList {
+  id             Int      @id @default(autoincrement())
+  customer       Customer @relation(fields: [customer_phone], references: [phone_number])
+  customer_phone String
+  product        Product  @relation(fields: [product_id], references: [id])
+  product_id     Int
+  created_at     DateTime @default(now())
+}
+
+model ShoppingList {
+  id             Int      @id @default(autoincrement())
+  customer       Customer @relation(fields: [customer_phone], references: [phone_number])
+  customer_phone String
+  product        Product  @relation(fields: [product_id], references: [id])
+  product_id     Int
+  created_at     DateTime @default(now())
+}
