@@ -3,8 +3,41 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(request:Request) {
     try {
+        const body = await request.json();
+        const { phone } = body;
 
+        if (!phone) {
+            return NextResponse.json({ error: 'Phone number required' }, { status: 400 });
+        }
+
+        // 1. Find Customer & Count Receipts
+        // We look up the customer by phone number
+
+        const customer = await prisma.customer.findUnique({
+            where: { phone_number: phone },
+            include: {
+                _count: {
+                    select: { receipts: true },
+                },
+            },
+        });
+
+        if (!customer) {
+            // if new user, return 0 receipts (Locked state)
+            return NextResponse.json({ exists: false,
+                receipts: 0,
+                name: null,
+            });
+        }
+
+        // 2. Return Use Stats
+        return NextResponse.json({
+            exists: true,
+            receipts: customer._count.receipts,
+            name: customer.name,
+        });
     }   
+    
     catch (error) {
         return NextResponse.json({ error:'Identification failed' }, { status: 500 });
     }

@@ -1,7 +1,12 @@
 'use client';
-import React , { useState, useEffect } from 'react';
-import { ShoppingCart, MessageSquare, 
-  Lock, Upload, Sparkles, Clock } from 'lucide-react';
+
+import React , { useState, useEffect, use } from 'react';
+import { 
+  ShoppingCart, MessageSquare, 
+  Lock, Upload, Sparkles, Clock, 
+  Smartphone, ArrowRight
+} from 'lucide-react';
+
 
 interface Product {
   id: number;
@@ -12,68 +17,97 @@ interface Product {
   image_url: string | null;
 }
 
+interface UserSession {
+  phone: string | null;
+  receiptsCount: number;
+  isAuthenticated: boolean;
+}
+
 export default function 
 CustomerWorkspace() {
 
-  // --- SESSION TIMER LOGIC ---
+  // --- STATE: SESSION & USER ---
   const [sessionTime, setSessionTime] = useState(0);
-
-  // Simple timer logic to match the "00:10" in my sketch
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSessionTime((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Format seconds into MM:SS
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, '0');
-    const secs = (seconds % 60).toString().padStart(2, '0');
-    return `${mins}:${secs}`;
-  };
-
-  // --- LOGIC MOCKUP ---
-  // In production, these come from your "auth.ts" and "prisma" database calls
-
-  const [UserStats] = useState({
-    receiptsCount: 2, //User has uploaded 2 receipts (Less than 5)
-    paymentConfirmed: false // User has not paid for current session
+  const [user, setUser] = useState<UserSession>({
+    phone: null,
+    receiptsCount: 0,
+    isAuthenticated: false,
   });
 
-  //Logic: Coupon is LOCKED if receipts < 5
-  const isCouponLocked =
-  UserStats.receiptsCount < 5;
+  // --- STATE: DATA & INPUTS ---
+  const [phoneInput, setPhoneInput] = useState('');
+  const [isIdentifying, setIsIdentifying] = useState(false);
 
-  //Logic: WhatsApp is LOCKED until payment is confirmed
-  const isWhatsAppLocked =
-  !UserStats.paymentConfirmed;
-
-  // --- DATA FETCHING LOGIC ---
   const [activeCategory, setActiveCategory] = useState('essential');
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch when category changes
+  // --- SESSION TIMER (Starts only after auth) ---
   useEffect(() => {
+    if (!user.isAuthenticated) return;
+    const timer = setInterval(() => {
+      setSessionTime((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [user.isAuthenticated]);
+
+  // --- IDENTIFICATION HANDLER ---
+  const handleIdentify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phoneInput) return;
+
+    setIsIdentifying(true);
+    try {
+      // Call our new API
+      const res = await fetch('/api/identify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneInput }),
+      });
+      const data = await res.json();
+
+      // Update State with real DB Data
+      setUser({
+        phone: phoneInput,
+        receiptsCount: data.receipts,
+        isAuthenticated: true,
+      });
+  
+    } catch (error) {
+      alert("System Error: Could not verufy phone number.");
+    } finally {
+      setIsIdentifying(false);
+    }
+  };
+
+  // --- PRODUCT FETCHING ---
+  useEffect(() => {
+    if (!user.isAuthenticated) return;
     async function fetchProducts() {
       setIsLoading(true);
       try {
-        const res = await fetch(
-          `/api/products?category=${activeCategory}`
-        );
+        const res = await fetch(`/api/products?category=${activeCategory}`);
         const data = await res.json();
         setProducts(data);
-      } catch (error) { 
-        console.error('Failed to load shop items', error);
+      } catch (error) {
+        console.error('Failed to load items');
       } finally {
         setIsLoading(false);
       }
     }
     fetchProducts();
-  }, [activeCategory]);
+  }, [activeCategory, user.isAuthenticated]);
+
+  // --- LOGIC GATES ---
+  const isCouponLocked = user.receiptsCount < 5;
+  const isWhatsAppLocked = true;
+
+  // Format seconds into MM:SS
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = (seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
   
   return (
     
@@ -83,14 +117,99 @@ CustomerWorkspace() {
     bg-slate-100 flex items-center 
     justify-center p-4">
       
+      {/* ======================================================================================
+      ========================================================================================== */}
+
+      {/* IDENTIFICATION OVERLAY (The "Gatekeeper") */}
+
+      {!user.isAuthenticated && (
+        <div 
+        className="absolute
+        inset-0 z-100
+        bg-slate-900/40
+        backdrop-blur-sm
+        flex items-center
+        justify-center p-4">
+          <div 
+          className="w-full
+          max-w-sm bg-white rounded-3xl
+          shadow-2xl p-8 animate-in fade-in
+          zooom-in duration-300">
+            <div 
+            className="flex
+            justify-center mb-6">
+              <div 
+              className="w-16 
+              h-16 bg-slate-100 rounded-full
+              flex items-center justify-center
+              animate-bounce">
+                <Smartphone 
+                className="w-8 h-8 text-slate-700" />
+              </div>
+            </div>
+
+            <h2 
+            className="text-2xl
+            font-bold text-center text-slate-800
+            mb-2">Welcome, ...</h2>
+            <p 
+            className="text-slate-500 text-center
+            text-sm mb-6">Enter your mobile number to view personalized offers.</p>
+            <form 
+            onSubmit={handleIdentify} 
+            className="space-y-4">
+              <div 
+              className="relative">
+                <input 
+                type="tel"
+                placeholder="000-000-0000"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value)}
+                className="w-full
+                bg-slate-50 border border-slate-200
+                rounded-xl py-4 px-4 text-center
+                text-lg font-bold tracking-widest
+                focus:outline-none focus:ring-2
+                focus:ring-slate-900
+                focus:border-transparent
+                transition-all" 
+                autoFocus/>
+              </div>
+              <button 
+              type="submit"
+              disabled={isIdentifying}
+              className="w-full
+              bg-slate-900 text-white
+              font-bold py-4 rounded-xl flex
+              items-center justify-center
+              gap-2 hover:scale-[1.02]
+              active:scale-[0.98] transition-all
+              disabled:opacity-70">
+                {isIdentifying ? 'Checking...' : 'Thrift'}
+                {!isIdentifying && <ArrowRight className="w-4 h-4"/>}
+              </button>
+            </form>
+            <p 
+            className="text-xs
+            text-center text-slate-400
+            mt-6">Session Access</p>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================================
+      ========================================================================================== */}
+
       {/* 2. THE APP CONTAINER (Mobile Optimized Frame) This represents the box drawn in my sketch */}
       <main 
-      className="relative 
+      className={`relative 
       w-full max-w-[400px] h-[85vh] 
       bg-white shadow-2xl rounded-3xl 
       overflow-hidden border-4 
       border-slate-200 ring-1 
-      ring-slate-900/5 flex flex-col">
+      ring-slate-900/5 flex flex-col
+      transition-all duration-500
+      ${!user.isAuthenticated ? 'blur-sm scale-95' : ''}`}>
 
         {/* --- ZONE A: GENDER SPLIT (Top 1/3) ---*/}
         <div 
@@ -100,11 +219,10 @@ CustomerWorkspace() {
           {/* WOMEN */}
           <button
           onClick={() => setActiveCategory('women')}
-          className="flex-1
-          bg-white hover:bg-rose-50
-          transition-colors flex flex-col
+          className={`flex-1 flex flex-col
           items-center justify-center gap-2
-          border-r border-slate-100 group">
+          border-r border-slate-100
+          ${activeCategory === 'women' ? 'bg-rose-50' : 'bg-white'}`}>
             <div 
             className="w-14
             h-14 roounded-full bg-rose-100
@@ -131,11 +249,9 @@ CustomerWorkspace() {
           {/* MEN */}
           <button 
           onClick={() => setActiveCategory('men')}
-          className="flex-1
-          bg-white hover:bg-sky-50
-          transition-colors flex flex-col
+          className={`flex-1 flex flex-col
           items-center justify-center gap-2
-          group">
+          ${activeCategory === 'men' ? 'bg-sky-50' : 'bg-white'}`}>
             <div 
             className="w-14 h-14 rounded-full
             bg-sky-100 flex items-center
@@ -161,7 +277,7 @@ CustomerWorkspace() {
             tracking-widest text-sm">MEN</span>
           </button>
         </div>
-
+        
         {/* --- ZONE B: ESSENTIALS BAR --- */}
         <div
         onClick={() => setActiveCategory('essential')}
@@ -218,66 +334,55 @@ CustomerWorkspace() {
                 className={`text-xs font-bold 
                 uppercase tracking-wide
                 ${isCouponLocked ? 'text-gray-400' : 'text-slate-600'}`}>
-                  {isCouponLocked ? 'Loyalty Locked (2/5)' : 'Upload Coupon'}
+                  {isCouponLocked ? `Locked (${user.receiptsCount}/5)` : 'Upload Coupon'}
                 </span>
               </div>
             </div>
           </div>
           {/* PRODUCT FEED*/}
           <div className="space-y-3">
-            {isLoading ? (
+            {products.map((product) => (
               <div
-              className="text-center text-slate-400
-              py-10 text-xs tracking-wider">Loading inventory...
-              </div>
-              ) : (
-                products.map((product) => (
-                <div
                 key={product.id} 
                 className="h-24
                 bg-white rounded-xl shadow-sm border
                 border-slate-100 flex items-center
                 p-3 gap-4">
-                  {/* Image Placeholder */}
                   <div 
                   className="w-16 h-16 
                   bg-slate-100 rounded-lg 
                   shrink-0 overflow-hidden 
                   relative border border-slate-100">
-                    {/* Next Image */}
                     <div 
                     className="absolute inset-0 flex
                     items-center justify-center text-[10px]
                     text-slate-300 
                     font-bold">
-                      IMG
                     </div>
-                    </div>
-                    <div 
-                    className="flex-1">
-                      <div 
-                      className="flex justify-between 
-                      items-start">
-                        <h3 
-                        className="font-bold text-slate-700
-                        text-sm">{product.name}</h3>
-                        <span 
-                        className="text-[10px] font-mono 
-                        bg-slate-100 text-slate-500 px-1.5 
-                        py-0.5 rounded">{product.item_code}</span>
-                      </div>
-                      <p 
-                      className="text-slate-500 text-[10px]
-                      mt-1">Sizes: {product.sizes.join(',')}</p>
-                      <p 
-                      className="font-bold text-slate-900
-                      mt-1">${product.price}</p>
-                    </div>
-              </div>
-              ))
-            )}
+                  </div>
+                  <div 
+                  className="flex-1">
+                    <h3 
+                    className="font-bold text-slate-700
+                    text-sm">{product.name}</h3>
+                    <span 
+                    className="text-[10px] font-mono 
+                    bg-slate-100 text-slate-500 px-1.5 
+                    py-0.5 rounded">{product.item_code}
+                    </span>
+                    <p 
+                    className="text-slate-500 text-[10px]
+                    mt-1">Sizes: {product.sizes.join(',')}
+                    </p>
+                    <p 
+                    className="font-bold text-slate-900
+                    mt-1">${product.price}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
 
         {/* --- ZONE D: BOTTOM FLOATING ELEMENTS --- */}
 
